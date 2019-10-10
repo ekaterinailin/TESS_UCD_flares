@@ -6,7 +6,7 @@ for i in $(seq 1 $END);
 
 while read path
     do
-        echo python single_tess_injrec.py $path >> ../cluster_scripts/tessjobs.sh
+        echo python /home/eilin/TESSUCDs/src/single_tess_injrec.py $path >> ../cluster_scripts/tessjobs.sh
     done < lclist.txt
 
 rm lclist.txt
