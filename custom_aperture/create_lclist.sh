@@ -1,7 +1,7 @@
 END=194
-for i in $(seq 1 $END);
+for i in $(seq 0 $END);
     do
-        ls $i*tess*.fits -t | head -1 >> lclist.txt
+        ls "$i"ca_tess*.fits -t | head -n 1 >> lclist.txt
     done
 
 while read path
