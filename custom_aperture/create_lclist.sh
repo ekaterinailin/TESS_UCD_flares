@@ -9,4 +9,4 @@ while read path
         echo python /home/eilin/TESSUCDs/src/single_tess_injrec.py $path >> ../cluster_scripts/tessjobs.sh
     done < lclist.txt
 
-rm lclist.txt
+#rm lclist.txt
