@@ -30,7 +30,7 @@ def custom_detrending(flc):
     flc.flux[:] = flc.detrended_flux[:]
     
     # remove some rolling medians on timescales of 3,33 to 10 hours time scales
-    flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(450, min_periods=1).median() + np.nanmedian(flc.flux)#15h
+    flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(300, center=True).median() + np.nanmedian(flc.flux)#15h
     #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(200, min_periods=1).median() + np.nanmedian(flc.flux)
     #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(100, min_periods=1).median() + np.nanmedian(flc.flux)
 
