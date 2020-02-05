@@ -19,38 +19,43 @@ import matplotlib.pyplot as plt
 def custom_detrending(flc):
     """Wrapper"""
     f = flc.flux[np.isfinite(flc.flux)]
-    
+   
     if np.abs(f[0]-f[-1])/np.median(f) > .2:
         print("Do a coarse spline interpolation to remove trends.")
         flc = fit_spline(flc, spline_coarseness=12)
         flc.flux[:] = flc.detrended_flux[:]
     
     # Iteratively remove fast sines with Periods of 0.1 to 2 day periods (the very fast rotators)
+    #print(1, flc.flux.shape)
     flc = iteratively_remove_sines(flc)
     flc.flux[:] = flc.detrended_flux[:]
-    
+    #print(2, flc.flux.shape)
     # remove some rolling medians on timescales of 3,33 to 10 hours time scales
     flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(300, center=True).median() + np.nanmedian(flc.flux)#15h
     #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(200, min_periods=1).median() + np.nanmedian(flc.flux)
     #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(100, min_periods=1).median() + np.nanmedian(flc.flux)
-
+    #print(3, flc.flux.shape)
     # Determine the window length for the SavGol filter for each continuous observation gap
+    flc = find_iterative_median(flc)
     w = search_gaps_for_window_length(flc)
-    
-    print("Window lengths: ", w)
+    flc = flc[np.isfinite(flc.flux)]
+    #print(4, flc.flux.shape)
+   # print("Window lengths: ", w)
     # Use lightkurve's SavGol filter while padding outliers with 25 data points around the outliers/flare candidates
     
-    flcd = flc.detrend("savgol", window_length=w, pad=25)#previously 25
-    print("Do last SavGol round.")
+    flc = flc.detrend("savgol", window_length=w, pad=25)#previously 25
+    flc.flux[:] = flc.detrended_flux[:]
+    #print(5, flc.flux.shape)
+  #  print("Do last SavGol round.")
     
     # After filtering, always use a 2.5 hour window to remove the remaining 
     
     flcd = flc.detrend("savgol", window_length=75, pad=25)#previously 25
-    
+    #print(6,flcd.flux.shape)
     # Determine the noise properties with a rolling std, padding masked outliers/candidates
     flcd = refine_detrended_flux_err(flcd, mask_pos_outliers_sigma=1.5, 
                                      std_rolling_window_length=15, pad=25)
-    
+    #print(7, flcd.flux.shape)
     return flcd
 
 
@@ -216,12 +221,13 @@ def iteratively_remove_sines(flcd, freq_unit=1/u.day,
     flct = copy.deepcopy(flcd)
     for le, ri in flct.find_gaps().gaps:
         flc = copy.deepcopy(flct[le:ri])
+        flc = find_iterative_median(flc)
         pg = flc.remove_nans().to_periodogram(freq_unit=freq_unit,
                                           maximum_frequency=maximum_frequency,
                                           minimum_frequency=minimum_frequency)
         snr = pg.flatten().max_power
-        print("Found peak in periodogram at ", pg.frequency_at_max_power)
-        print("SNR at ", snr)
+    #    print("Found peak in periodogram at ", pg.frequency_at_max_power)
+    #    print("SNR at ", snr)
         while snr > 2.5:
             pg = flc.remove_nans().to_periodogram(freq_unit=freq_unit,
                                                   maximum_frequency=maximum_frequency,
