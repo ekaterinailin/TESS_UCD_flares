@@ -12,6 +12,33 @@ import sys, os
 
 from collections import defaultdict
 
+import os
+
+CWD = "/".join(os.getcwd().split("/")[:-1])
+
+
+def no_nan_inf(l):
+    """Check arguments in list for Inf and NaN.
+    Return True if all values are finite, and not NaN.
+
+    Parameters:
+    -----------
+    l : list
+        contains floats, ints, and arrays of these values
+
+    Return:
+    -------
+    bool
+    """
+    for elem in l:
+        if isinstance(elem,np.ndarray):
+            if (np.isnan(elem).any() |  (not np.isfinite(elem).any())):
+                return False
+        if (isinstance(elem, float) | isinstance(elem, int)):
+            if (np.isnan(elem) |  (not np.isfinite(elem))):
+                return False
+    return True
+
 
 def get_window_length_dict():
     """Collection of window lengths
@@ -72,35 +99,73 @@ def write_flares_to_file(flc, cluster):
     df.to_csv('{0}_flares.csv'.format(cluster), index=False)
     return
     
-def read_custom_aperture_lc(path):
-    '''Read in custom aperture light curve
-    from TESS. Needs specific naming convention.
-    Applies pre-defined quality masks.
     
+def read_custom_aperture_lc(path, typ="custom", mission="TESS", mode="LC",
+                            sector=None, TIC=None):
+    '''Read in custom aperture light curve
+    from TESS or uses AltaiPony's from path for standard 
+    light curves. Needs specific naming convention.
+    Applies pre-defined quality masks.
+
     Parameters:
     -----------
     path : str
         path to file
-    
+
     Returns:
     --------
     FlareLightCurve
     '''
-    hdu = fits.open(path)
-    data = hdu[1].data
+    if typ=="custom":
+        hdu = fits.open(path)
+        data = hdu[1].data
+        if sector==None:
+            sector = int(path.split("-")[1][-2:])
+        if TIC==None:
+            TIC = int(path.split("-")[2])
 
-    sector = int(path.split("-")[1][-2:])
-    TIC = int(path.split("-")[2])
-
-    flc = FlareLightCurve(time=data["TIME"],
-                        flux=data["FLUX"],
-                        flux_err=data["FLUX_ERR"],
-                        quality=data["QUALITY"],
-                        cadenceno=data["CADENCENO"],
-                        targetid=TIC,
-                        campaign=sector)
-    flc = fix_mask(flc)
+        flc = FlareLightCurve(time=data["TIME"],
+                            flux=data["FLUX"],
+                            flux_err=data["FLUX_ERR"],
+                            quality=data["QUALITY"],
+                            cadenceno=data["CADENCENO"],
+                            targetid=TIC,
+                            campaign=sector)
+        flc = fix_mask(flc)
+    else:
+        flc = from_path(path, mission=mission, mode=mode)
+        
     return flc
+    
+#def read_custom_aperture_lc(path):
+#    '''Read in custom aperture light curve
+#    from TESS. Needs specific naming convention.
+#    Applies pre-defined quality masks.
+#    
+#    Parameters:
+#    -----------
+#    path : str
+#        path to file
+#    
+#    Returns:
+#    --------
+#    FlareLightCurve
+#    '''
+#    hdu = fits.open(path)
+#    data = hdu[1].data#
+##
+#    sector = int(path.split("-")[1][-2:])
+#    TIC = int(path.split("-")[2])
+#
+#    flc = FlareLightCurve(time=data["TIME"],
+#                        flux=data["FLUX"],
+#                        flux_err=data["FLUX_ERR"],
+#                        quality=data["QUALITY"],
+#                        cadenceno=data["CADENCENO"],
+#                        targetid=TIC,
+#                        campaign=sector)
+#    flc = fix_mask(flc)
+#    return flc
 
 def fix_mask(flc):
     '''Here the masks for different TESS 
@@ -132,22 +197,22 @@ def fix_mask(flc):
     flc.quality[:] = np.isnan(flc.flux)
     return flc
 
-def get_window_length_dict():
-    l15 = [(x, 15) for x in   [44984200]]
-    l25 = [(x, 25) for x in   [98874143, 388903843, 332623751, 44892011, 
-                               29780677, 340703996, 395130640, 441000085, 
-                               53603145, 144776281,]]
-    l55 = [(x, 55) for x in   [471012770, 5630425, 140478472, 142052876,
-                               272349442, 277539431, 293561794, 369555560,
-                               464378628]]
-    l75 = [(x, 75) for x in   [29928567,298907057, 366567664, 369863567,
-                               420001446]]
-    l115 = [(x, 115) for x in [328254412,]]
-    l555 = [(x, 555) for x in [471012740, 125835702, 30101427, 415839928, 
-                               398985964, 322568489, 2470992, 1539914,
-                               117733581, 73118477]]
-    L = [l15, l25, l55, l75, l115,l555]
-    L = [x for a in L for x in a]
-    l = dict(L)
-    assert len(l) == len(L)
-    return l
+#def get_window_length_dict():
+#    l15 = [(x, 15) for x in   [44984200]]
+#    l25 = [(x, 25) for x in   [98874143, 388903843, 332623751, 44892011, 
+#                               29780677, 340703996, 395130640, 441000085, 
+#                               53603145, 144776281,]]
+#    l55 = [(x, 55) for x in   [471012770, 5630425, 140478472, 142052876,
+#                               272349442, 277539431, 293561794, 369555560,
+#                               464378628]]
+#    l75 = [(x, 75) for x in   [29928567,298907057, 366567664, 369863567,
+#                               420001446]]
+#    l115 = [(x, 115) for x in [328254412,]]
+#    l555 = [(x, 555) for x in [471012740, 125835702, 30101427, 415839928, 
+#                               398985964, 322568489, 2470992, 1539914,
+#                               117733581, 73118477]]
+#    L = [l15, l25, l55, l75, l115,l555]
+#    L = [x for a in L for x in a]
+#    l = dict(L)
+#    assert len(l) == len(L)
+#    return l
