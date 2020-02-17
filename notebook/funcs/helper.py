@@ -13,7 +13,6 @@ import sys, os
 
 from collections import defaultdict
 
-import os
 
 CWD = "/".join(os.getcwd().split("/")[:-1])
 
