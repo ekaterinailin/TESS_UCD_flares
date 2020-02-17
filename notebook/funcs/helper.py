@@ -1,5 +1,5 @@
 # Python3
-# Some functions used for flare finding, data management
+# Some functions used for flare finding, data management, and reading of light curves
 
 
 import pandas as pd
@@ -7,6 +7,7 @@ import numpy as np
 
 from astropy.io import fits
 from altaipony.flarelc import FlareLightCurve
+from altaipony.lcio import from_path
 
 import sys, os
 
@@ -91,11 +92,9 @@ def write_flares_to_file(flc, cluster):
         print('Added an empty row for TIC {}'.format(flc.targetid))
     flc.flares['TIC'] = flc.targetid
     flc.flares['Campaign'] = flc.campaign
-    #flc.flares = flc.get_saturation(return_level=True) maybe later
     print(flc.flares)
     df = df.append(flc.flares, ignore_index=True)
     lafter = df[~df.ed_rec.isnull()].shape[0]
-   # print('Added {} flares to the {} found so far in {}.'.format(lafter-lbefore, lbefore, cluster))
     df.to_csv('{0}_flares.csv'.format(cluster), index=False)
     return
     
@@ -137,35 +136,7 @@ def read_custom_aperture_lc(path, typ="custom", mission="TESS", mode="LC",
         
     return flc
     
-#def read_custom_aperture_lc(path):
-#    '''Read in custom aperture light curve
-#    from TESS. Needs specific naming convention.
-#    Applies pre-defined quality masks.
-#    
-#    Parameters:
-#    -----------
-#    path : str
-#        path to file
-#    
-#    Returns:
-#    --------
-#    FlareLightCurve
-#    '''
-#    hdu = fits.open(path)
-#    data = hdu[1].data#
-##
-#    sector = int(path.split("-")[1][-2:])
-#    TIC = int(path.split("-")[2])
-#
-#    flc = FlareLightCurve(time=data["TIME"],
-#                        flux=data["FLUX"],
-#                        flux_err=data["FLUX_ERR"],
-#                        quality=data["QUALITY"],
-#                        cadenceno=data["CADENCENO"],
-#                        targetid=TIC,
-#                        campaign=sector)
-#    flc = fix_mask(flc)
-#    return flc
+
 
 def fix_mask(flc):
     '''Here the masks for different TESS 
@@ -197,22 +168,4 @@ def fix_mask(flc):
     flc.quality[:] = np.isnan(flc.flux)
     return flc
 
-#def get_window_length_dict():
-#    l15 = [(x, 15) for x in   [44984200]]
-#    l25 = [(x, 25) for x in   [98874143, 388903843, 332623751, 44892011, 
-#                               29780677, 340703996, 395130640, 441000085, 
-#                               53603145, 144776281,]]
-#    l55 = [(x, 55) for x in   [471012770, 5630425, 140478472, 142052876,
-#                               272349442, 277539431, 293561794, 369555560,
-#                               464378628]]
-#    l75 = [(x, 75) for x in   [29928567,298907057, 366567664, 369863567,
-#                               420001446]]
-#    l115 = [(x, 115) for x in [328254412,]]
-#    l555 = [(x, 555) for x in [471012740, 125835702, 30101427, 415839928, 
-#                               398985964, 322568489, 2470992, 1539914,
-#                               117733581, 73118477]]
-#    L = [l15, l25, l55, l75, l115,l555]
-#    L = [x for a in L for x in a]
-#    l = dict(L)
-#    assert len(l) == len(L)
-#    return l
+
