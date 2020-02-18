@@ -64,14 +64,15 @@ if __name__ == "__main__":
     cs = [p.split("/")[-1].split("_")[1][1:-4]for p in paths]
     targs = list(zip(ids,cs))
     targs = list(set(targs))
-    
-    for TIC, c in targs:
-        
-        print(f"Analysing TIC {TIC} in sector {c}")
-        # find and characterize all flares
-        flares = wrap_characterization(TIC, c, clcs, paths, tstamp)
-        
-        # add results to file
-        with open(f"/work1/eilin/TESS_UCDs/TESS_UCD_flares/flare_tables/{tstamp}_vetted_flares.csv", "a") as f:
-            flares.to_csv(f, index=False, header=False)
-        
+    for i, t in enumerate(targs):
+        print(i,t)
+    for TIC, c in targs[13:]:
+        if ((TIC !='000332470458') & (c!="0010")):
+            print(f"Analysing TIC {TIC} in sector {c}")
+            # find and characterize all flares
+            flares = wrap_characterization(TIC, c, clcs, paths, tstamp)
+            
+            # add results to file
+            with open(f"/work1/eilin/TESS_UCDs/TESS_UCD_flares/flare_tables/{tstamp}_vetted_flares.csv", "a") as f:
+                flares.to_csv(f, index=False, header=False)
+            

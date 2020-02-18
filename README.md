@@ -8,15 +8,15 @@ and the procedure of injection-recovery of synthetic flares.
 - `custom_apertures/`: custom aperture light curve fits files
 - `flare_tables/`: final results 
 - `notebook/`
- - `sample_injrec.py`: Use this script to sample injection and recovery of flares in a set of light curves
- - `analyse_injrec.py`: Use this script to combine stored injection recovery tables with light curves to characterize them and store final  results in `flare_tables/`
- - `NB1_Find_flares_in_custom_aperture_light_curves.ipynb`: A notebook to simply show how to de-trend and find flares using a custom detrending procedure, adn then characterize the candidates with injection-recovery of synthetic flares.
- - `NB4_Vet_flares.ipynb`: A notebook that allows you to look at the light curve and its flares at different stages of the analysis process. **NEEDS CLEANING** 
- - `NB3_....ipynb`: A notebook in which you can use your injection-recovery sample to characterize flares that you found. **NEEDS CLEANING**
- - `funcs/`
-   - `helper.py` reading files, masking light curves, etc.
-   - `custom_detrending.py` custom_detrending function lives here with all the functions that it calls
-   - `tests/` tests to run with `pytest funcs/`
+  - `sample_injrec.py`: Use this script to sample injection and recovery of flares in a set of light curves
+  - `analyse_injrec.py`: Use this script to combine stored injection recovery tables with light curves to characterize them and store final  results in `flare_tables/`
+  - `NB1_Find_flares_in_custom_aperture_light_curves.ipynb`: A notebook to simply show how to de-trend and find flares using a custom detrending procedure, adn then characterize the candidates with injection-recovery of synthetic flares.
+  - `NB4_Vet_flares.ipynb`: A notebook that allows you to look at the light curve and its flares at different stages of the analysis process. **NEEDS CLEANING** 
+  - `NB3_....ipynb`: A notebook in which you can use your injection-recovery sample to characterize flares that you found. **NEEDS CLEANING**
+  - `funcs/`
+    - `helper.py` reading files, masking light curves, etc.
+    - `custom_detrending.py` custom_detrending function lives here with all the functions that it calls
+    - `tests/` tests to run with `pytest funcs/`
     
 
 ## Installation requirements
