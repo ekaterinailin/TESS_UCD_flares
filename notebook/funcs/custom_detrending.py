@@ -26,41 +26,32 @@ def custom_detrending(flc):
         flc.flux[:] = flc.detrended_flux[:]
     
     # Iteratively remove fast sines with Periods of 0.1 to 2 day periods (the very fast rotators)
-    #print(1, flc.flux.shape)
     flc = iteratively_remove_sines(flc)
     flc.flux[:] = flc.detrended_flux[:]
-    #print(2, flc.flux.shape)
-    # remove some rolling medians on timescales of 3,33 to 10 hours time scales
+    
+    # remove some rolling medians on a 10 hours time scale
     flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(300, center=True).median() + np.nanmedian(flc.flux)#15h
-    #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(200, min_periods=1).median() + np.nanmedian(flc.flux)
-    #flc.flux[:] = flc.flux - pd.Series(flc.flux).rolling(100, min_periods=1).median() + np.nanmedian(flc.flux)
-    #print(3, flc.flux.shape)
+    
     # Determine the window length for the SavGol filter for each continuous observation gap
     flc = find_iterative_median(flc)
     w = search_gaps_for_window_length(flc)
     flc = flc[np.isfinite(flc.flux)]
-    #print(4, flc.flux.shape)
-   # print("Window lengths: ", w)
+
     # Use lightkurve's SavGol filter while padding outliers with 25 data points around the outliers/flare candidates
-    
-    flc = flc.detrend("savgol", window_length=w, pad=25)#previously 25
+    flc = flc.detrend("savgol", window_length=w, pad=25)
     flc.flux[:] = flc.detrended_flux[:]
-    #print(5, flc.flux.shape)
-  #  print("Do last SavGol round.")
     
     # After filtering, always use a 2.5 hour window to remove the remaining 
+    flcd = flc.detrend("savgol", window_length=75, pad=25)
     
-    flcd = flc.detrend("savgol", window_length=75, pad=25)#previously 25
-    #print(6,flcd.flux.shape)
     # Determine the noise properties with a rolling std, padding masked outliers/candidates
     flcd = refine_detrended_flux_err(flcd, mask_pos_outliers_sigma=1.5, 
                                      std_rolling_window_length=15, pad=25)
-    #print(7, flcd.flux.shape)
     return flcd
 
 
 def refine_detrended_flux_err(flcd, mask_pos_outliers_sigma=2.5, 
-                              std_rolling_window_length=15, pad=25):#previously 3 >> 25
+                              std_rolling_window_length=15, pad=25):
     """Attempt to recover a good estimate of the ligh curve noise.
     Start out from a simple standard deviation of the flux.
     Then filter out outliers above `mask_pos_outliers_sigma`.
@@ -105,9 +96,9 @@ def refine_detrended_flux_err(flcd, mask_pos_outliers_sigma=2.5,
     # pad the excluded values not to create spikes of high error around flares
     isin = np.invert(np.isfinite(flcd.detrended_flux_err))
     x = np.where(isin)[0]
-    for i in range(-pad,pad+1):
-        y = x+i
-        y[np.where(y>len(isin)-1)] = len(isin)-1
+    for i in range(-pad, pad+1):
+        y = x + i
+        y[np.where(y > len(isin) - 1)] = len(isin) - 1
         isin[y] = True
             
     x = np.where(isin)[0]
@@ -154,25 +145,26 @@ def select_window_length(flux):
     #normalize flux and FFT it:
     yf = fft(flux/np.nanmean(flux)-1.)
     
-    maxfreq = len(yf)//5
+    maxfreq = len(yf) // 5
     minfreq = 1
 
     # choose window length
-    w = np.rint(len(yf)/(minfreq+np.argmax(yf[minfreq:maxfreq]))/3)
+    w = np.rint(len(yf) / (minfreq + np.argmax(yf[minfreq:maxfreq])) / 3)
 
     # w must be odd
     if w%2==0:
         w += 1
+        
     # if w is too large don't do it at all
-    if w > len(yf)//2:
+    if w > len(yf) // 2:
         return None
     else:
-        return int(max(w,75))
+        return int(max(w, 75))
 
 
 def fit_spline(flc, spline_coarseness=12, spline_order=3):
     """Do a spline fit on a coarse sampling of data points.
-    NOT USED in this work.
+    
     Parameters:
     ------------
     flc : FlareLightCurve
