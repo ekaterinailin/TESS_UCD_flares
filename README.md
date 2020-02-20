@@ -1,7 +1,7 @@
-# TESS_UCD_flares - Find and analyse flares in TESS UCD light curves
+# Flares on ultracool dwarfs with TESS - Find and analyse flares in TESS UCD light curves
 
 Schmidt et al. (2020) (in prep.) studied flare in ultracool dwarfs in TESS Cycle 1 light curves. Here we present the de-trending prescription,
-and the procedure of injection-recovery of synthetic flares. 
+the flare finding, and the procedure of injection-recovery of synthetic flares, which are all based on the [lightkurve](https://docs.lightkurve.org/api/index.html) based package for flare studies in Kepler, K2, and TESS - [AltaiPony](https://altaipony.readthedocs.io/en/latest/).
 
 ## Contents
 
@@ -49,6 +49,10 @@ To account for these effects we adopted the following procedure:
 4. To remove trends on shorter time scales, we mask and pad outliers, and apply a Savitzky-Golay filter with window sizes that are three times shorter that the dominant residual frequency. The minimum window size is 2.5 h and is determined using a FFT of the residual light curve.
 5. In a final step we filter the light curve with the minimum window size  and estimate the scatter in the light curve using a rolling standard deviation (window size= 30 min) with masked and padded positive outliers, i.e. flare candidates. The masked and padded values are assigned the mean uncertainty from the rest of the light curve.
 
+## Flare finding
+
+After de-trending we find flare candidates as >3 data points and >3 sigma outliers in the residual light curve using the `find_flares()` method, see [AltaiPony docs](https://altaipony.readthedocs.io/en/latest/api/altai.html)
+
 ## Injection-recovery
 
 When an iterative and complex but deterministic procedure is used to de-trend a light curve there is no analytic way to determine
@@ -56,7 +60,7 @@ When an iterative and complex but deterministic procedure is used to de-trend a 
 - the recovery probability or
 - the true energy 
 
-of a flare. Every light curve is different, and recovery probability and measured energy largely depend on its amplitude and duration convolved with time sampling, and de-trending effects. Injecting synthetic flares spanning the parameter space of amplitude and duration into the not yet de-trended light curve resolves both problems at once. The light curve with synthetic flares injected can undergo the same de-trending procedure as the one without. Recovering the injected flares results in a measure for recovery probability as a function of amplitude and duration, and the difference between the injected and recovered flare energies can be used as a correction factor for the flares found in the original light curve. 
+of a flare. Every light curve is different, and recovery probability and measured energy largely depend on its amplitude and duration convolved with time sampling, and de-trending effects. Injecting and recovering synthetic flares spanning the parameter space of amplitude and duration into the not yet de-trended light curve resolves both problems at once. The light curve with synthetic flares injected can undergo the same de-trending procedure as the one without. Recovering the injected flares results in a measure for recovery probability as a function of amplitude and duration, and the difference between the injected and recovered flare energies can be used as a correction factor for the flares found in the original light curve. 
 
 Injection-recovery involves the following seven steps:
 
@@ -68,11 +72,6 @@ Injection-recovery involves the following seven steps:
 6. Apply the correction factor to amplitude and duration of the original flare to find its intrinsic properties.
 7. Find the recovery probability of flares with these intrinsic properties.
 
-Injection recovery must be performed on every light curve individually, and computational cost scale with the complexity of the de-trending prescription.
-
-
-
-
-This procedure assumes that the flares follow a certain flare shape, here as it is described in Davenport 2014.
+Injection recovery must be performed on every light curve individually, and computational cost scales with the complexity of the de-trending prescription. The procedure assumes that the flares follow a certain flare shape, here as it is described in [Davenport et al. (2014)](https://ui.adsabs.harvard.edu/link_gateway/2014ApJ...797..122D/doi:10.1088/0004-637X/797/2/122). Recovery probabilities and energy ratios for complex shaped flares will be less accurate the more they deviate from the model.
 
 
