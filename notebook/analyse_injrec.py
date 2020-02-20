@@ -58,7 +58,7 @@ if __name__ == "__main__":
     CWD = "/".join(os.getcwd().split("/")[:-1])
     clcs = glob.glob(CWD+"/custom_aperture/*.fits")
     paths = glob.glob(f"{CWD}/injrec/*.csv")
-    tstamp = '20200218'
+    tstamp = '20200220'
     
     ids = [p.split("/")[-1].split("_")[0]for p in paths]
     cs = [p.split("/")[-1].split("_")[1][1:-4]for p in paths]
@@ -66,13 +66,16 @@ if __name__ == "__main__":
     targs = list(set(targs))
     for i, t in enumerate(targs):
         print(i,t)
-    for TIC, c in targs[13:]:
-        if ((TIC !='000332470458') & (c!="0010")):
+    for TIC, c in targs:
+        try:    
             print(f"Analysing TIC {TIC} in sector {c}")
             # find and characterize all flares
             flares = wrap_characterization(TIC, c, clcs, paths, tstamp)
             
             # add results to file
             with open(f"/work1/eilin/TESS_UCDs/TESS_UCD_flares/flare_tables/{tstamp}_vetted_flares.csv", "a") as f:
+                flares["ID"] = TIC
+                flares["sector"] = c
                 flares.to_csv(f, index=False, header=False)
-            
+        except:
+            print(f"\n--------------------\nTIC {TIC}, sector {c} FAILED.\n---------------------\n")
