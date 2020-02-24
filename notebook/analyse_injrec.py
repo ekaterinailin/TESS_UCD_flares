@@ -22,15 +22,19 @@ def wrap_characterization(TIC, c, clcs, paths, tstamp):
     
     df = pd.DataFrame()
     for p in paths:
-        if ((TIC in p) & (c in p)):
+        if ((TIC in p) & ("s"+c in p)):
+            print(p)
             df = df.append(pd.read_csv(p), ignore_index=True)
+    print(f"{df.shape[0]} synthetic flares injected.")
 
     # set number of synthetic flares per bin to 20 here:
     bins = int(np.rint(np.sqrt(df.shape[0]/20))) 
     
+    print("Get custom LC path")
     # get path to custom LC
     pac = get_customlc(TIC, c, clcs)
 
+    print("Get custom LC")
     # read custom LC
     flc = read_custom_aperture_lc(pac)
 
@@ -58,10 +62,11 @@ if __name__ == "__main__":
     CWD = "/".join(os.getcwd().split("/")[:-1])
     clcs = glob.glob(CWD+"/custom_aperture/*.fits")
     paths = glob.glob(f"{CWD}/injrec/*.csv")
-    tstamp = '20200220'
-    
-    ids = [p.split("/")[-1].split("_")[0]for p in paths]
-    cs = [p.split("/")[-1].split("_")[1][1:-4]for p in paths]
+    tstamp = '20200225'
+    print(paths[4].split("/")[-1].split("_")[1][1:-4])
+    ids = [p.split("/")[-1].split("_")[0] for p in paths]
+    cs = [p.split("/")[-1].split("_")[1][1:5] for p in paths]
+    print(cs)
     targs = list(zip(ids,cs))
     targs = list(set(targs))
     for i, t in enumerate(targs):
@@ -79,3 +84,4 @@ if __name__ == "__main__":
                 flares.to_csv(f, index=False, header=False)
         except:
             print(f"\n--------------------\nTIC {TIC}, sector {c} FAILED.\n---------------------\n")
+            

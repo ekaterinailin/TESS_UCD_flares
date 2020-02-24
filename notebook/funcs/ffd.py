@@ -136,11 +136,10 @@ def fit_beta_to_powerlaw(a, freq, alpha, alpha_err, tot_obs_time, mode="ED"):
     #jackknife uncertainty
     x0starts = {'ED' : 10, 'energy' : 1e25}
     _beta = np.array([fmin(LSQ,x0=x0starts[mode],
-                          args=(np.delete(a,i, None),np.delete(freq,i,None),alpha),
+                          args=(np.delete(a,i),np.delete(freq,i),alpha),
                           disp=0)[0] for i in range(N)])
                           
     #cumulative beta = beta_cum
-    print(_beta.mean())
     beta = _beta.mean() / tot_obs_time
     beta_err = np.sqrt( (N-1) / N * ( (_beta / tot_obs_time - beta)**2 ).sum() )
     
@@ -150,9 +149,9 @@ def fit_beta_to_powerlaw(a, freq, alpha, alpha_err, tot_obs_time, mode="ED"):
     #propagate errors on alpha to beta
     beta_err = np.sqrt(beta_err**2 * (alpha - 1.)**2 + beta**2 * alpha_err**2)
     
-    return beta, beta_err
+    return _beta * np.abs(alpha - 1.), beta, beta_err
 
-def plot_powerlaw(ax, a, alpha, beta, mode, custom_xlim=None, **kwargs):
+def plot_powerlaw(ax, a, alpha_val, beta, mode, custom_xlim=None, **kwargs):
     '''
     Plot the power law fit to the FFD.
 
@@ -173,6 +172,6 @@ def plot_powerlaw(ax, a, alpha, beta, mode, custom_xlim=None, **kwargs):
     else:
         mi, ma = custom_xlim
         x = np.linspace(mi, ma, 3)
-    y = beta / np.abs(alpha - 1.) * np.power(x,-alpha+1.)
+    y = beta / np.abs(alpha_val - 1.) * np.power(x,-alpha_val+1.)
     ax.plot(x, y,  **kwargs)
     return
