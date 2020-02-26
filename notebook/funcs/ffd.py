@@ -1,15 +1,46 @@
 import copy
+import warnings
+
 import pandas as pd
 import numpy as np
 
 from scipy.optimize import fmin
+import os
+
+CWD = os.path.dirname(os.path.abspath(__file__))
 
 class FFD(object):
     """Flare frequency distribution.
+    alpha and beta refer to a power law that
+    can be used to model the FFD. 
+    
+    dN/dE = beta * E^(-alpha)
+    
+    N - number of flares
+    E - energy or equivalent duration
     
     
+    Attributes:
+    -----------
+    f : DataFrame
+        flare table in the FlareLightCurve.flares format
+        with extra columns for flare target identifiers
+    alpha : float
+        power law exponent
+    alpha_err : float
+        power law exponent uncertainty 
+    beta : float
+        power law intercept
+    beta_err : float
+        power law intercept uncertainty
+    total_obs_time: float
+        total observing time during which
+        the flares in f were detected
+    ID : str
+        column name in f for the flare target identifier
+        
     """
-    def __init__(self, dataframe, alpha=None, alpha_err=None,
+    def __init__(self, f=None, alpha=None, alpha_err=None,
                  beta=None, beta_err=None, total_obs_time=1.,
                  ID=None):
         
@@ -178,6 +209,135 @@ class FFD(object):
         
         return alpha, sig_alpha
     
+    def is_powerlaw_truncated(self, ed, rejection=(.15, .05), nthresh=100):
+        '''
+        Apply the exceedance test recommended by
+        Maschberger and Kroupa 2009. 
+
+        Parameters:
+        ------------
+        rejection : tuple of floats < 1.
+            above these thresholds the distribution
+            can be suspected to be truncated
+        nthresh : int
+            Number at which to use the more permissive
+            or more restrictive truncation rejection
+            limit, i.e. value 0 or 1 in `rejection`
+
+        Return:
+        ---------
+        True if power law not consistent with an un-truncated power law
+        False if power law is consitent with an un-truncated power law
+        '''
+
+        mean, std = calculate_average_number_of_exceeding_values(ed, self.alpha, 500)
+
+        if self.alpha > 2.:
+            warnings.warn('Power law exponent is steep. '
+                          'Power of statistical tests decreases '
+                          'according to Maschberger and Kroupa 2009.')
+        if len(ed) >= nthresh:
+            truncation_limit = rejection[1]
+        else:
+            truncation_limit = rejection[0]
+
+        truncated = (mean / len(ed) > truncation_limit)
+
+        return truncated
+    
+    def is_powerlaw(self, ed, sig_level=0.05):
+        '''
+        Test if we must reject the power law hypothesis
+        judging by the stabilised Kolmogorov-Smirnov
+        statistic, suggested by Maschberger and Kroupa
+        2009.
+
+        Parameters:
+        -----------
+        ed : array
+            energy/ED values that supposedly follow a power law
+        sig_level : float < 1.
+            significance level for the hypothesis test
+
+        Returns:
+        ---------
+        True if we cannot reject the power law hypothesis.
+        False if we must reject the power law hypothesis.
+        '''
+        truncated = self.is_powerlaw_truncated(ed)
+        KS = stabilised_KS_statistic(ed, alpha=self.alpha, truncated=truncated)
+        limit = calculate_KS_acceptance_limit(len(ed), sig_level=sig_level)
+        ispowerlaw = KS < limit
+        if ispowerlaw == False:
+            warnings.warn('Kolmogorov-Smirnov tells us to reject'
+                           r' the power law hypothesis at p={}.'
+                           ' KS={}, limit={}'.format(sig_level, KS, limit))
+        return ispowerlaw
+
+def calculate_average_number_of_exceeding_values(data, alpha, n, **kwargs):
+    '''
+    Parameters:
+    -----------
+    ffd : FFD object
+
+    n : int
+        number of samples to average
+    kwargs : dict
+        Keyword arguments to pass to
+        :func:calculate_number_of_exceeding_values
+
+    Returns:
+    --------
+    (mean, std) : (float, float)
+        average number number of exceeding values
+        and standard deviation
+    '''
+
+    assert alpha is not None
+    assert data is not None
+    exceedance_statistic = [_calculate_number_of_exceeding_values(data, alpha, **kwargs) for i in range(n)]
+    exceedance_statistic = np.array(exceedance_statistic)
+    return np.nanmean(exceedance_statistic), np.nanstd(exceedance_statistic)
+
+def _calculate_number_of_exceeding_values(data, alpha, maxlim=1e8, **kwargs):
+    '''
+    Helper function that mimicks data similar
+    to the observations (same alpha and size)
+    and returns a sample from an untruncated
+    distribution. The number of values that
+    exceeds the maximum in the actual data is
+    returned.
+
+    Parameters:
+    -----------
+    data : array
+        observed values
+    alpha : float
+        best-fit power law exponent to the data
+    maxlim : float > 1.
+        factor to simulate an untruncated
+        version of the given power law
+        distribution
+    kwargs : dict
+        Keyword arguments to pass to
+        :func:generate_random_power_law_distribution
+
+    Returns:
+    --------
+    int : number of exceeding values
+    '''
+    pdist = generate_random_power_law_distribution(np.min(data),
+                                                   np.max(data) * maxlim,
+                                                   -alpha+1,
+                                                   size=data.shape[0],
+                                                   **kwargs)
+
+    if np.isnan(pdist).any():
+        raise ValueError('Fake power law distribution for the'
+                         ' exceedance test could not be generated.'
+                         ' Check your inputs.')
+    return len(np.where(pdist > np.max(data))[0])
+    
 def _get_freq(dataframe, ID, sort):
     
     freq = []
@@ -260,6 +420,7 @@ def de_biased_upper_limit(data, a):
     exponent = 1. / (1. - a)
     return Xn * np.power(base, exponent)
 
+
 def de_bias_alpha(n, alpha):
     '''
     De-biases the power law value
@@ -281,3 +442,131 @@ def de_bias_alpha(n, alpha):
         raise ValueError('de_bias_alpha: one or '
                          'both arg(s) is/are NaN')
     return (alpha - 1.) * n / (n - 2) + 1.
+
+
+def stabilised_KS_statistic(data, alpha, truncated):
+    '''
+    Calculate the stabilised KS statistic
+    from Maschberger and Kroupa 2009, Eqn. (21)
+    orginally from Michael 1983, and Kimber 1985.
+
+    Parameters:
+    --------------
+    data : array
+        observed values that are suspected
+        to follow a power law relation
+    kwargs : dict
+        Keyword arguments to pass to
+        :func:calculate_cumulative_powerlaw_distribution
+    Return:
+    --------
+    float - stablised KS statistic
+    '''
+    sorted_data = np.sort(data)
+    pp = calculate_cumulative_powerlaw_distribution(sorted_data, alpha, truncated)
+    y = (np.arange(1, len(pp) + 1) - .5) / len(pp)
+    argument = (_apply_stabilising_transformation(y)
+                - _apply_stabilising_transformation(pp))
+    return np.max(np.abs(argument))
+
+
+def calculate_cumulative_powerlaw_distribution(data, alpha, truncated):
+    '''
+    Calculates the cumulative powerlaw distribution
+    from the data, given the best fit power law exponent
+    for y(x) ~ x^(-alpha).
+    Eq. (2) in Maschberger and Kroupa 2009.
+
+    Parameters:
+    -----------
+    data : array
+        observed values that are suspected
+        to follow a power law relation, sorted in
+        ascending order
+    alpha : float
+        best-fit power law exponent
+
+    Returns:
+    ---------
+    array : cumulative distribution
+    '''
+    if alpha <=1.:
+        raise ValueError('This distribution function is only'
+                         ' valid for alpha > 1., see also '
+                         'Maschberger and Kroupa 2009.')
+    data = np.sort(data)
+    def expa(x, alpha):
+        return np.power(x, 1. - alpha)
+    if truncated == True:
+        CDF = ((expa(data, alpha) - expa(np.min(data), alpha))
+              / (expa(np.max(data), alpha) - expa(np.min(data), alpha)))
+    elif truncated == False:
+        CDF = 1. - expa(data / np.min(data), alpha)
+    #fix a -0. value that occurs as the first value
+    CDF[np.where(CDF==0.)[0]] = 0.
+    return CDF
+
+
+def calculate_KS_acceptance_limit(n, sig_level=0.05):
+    '''
+    Above this limit we must reject the null-hypothesis.
+    In our context, this is the hypothesis that the dis-
+    tribution follows a given power law.
+
+    Parameters:
+    -----------
+    n : int
+        sample size
+    sig_level : 0 < float < 1.
+        significance level
+    '''
+    if ((sig_level >= 1.) | (sig_level <= 0.)):
+        raise ValueError('Pass a valid significance level.')
+    if n == 0:
+        raise ValueError('No data to calculate KS_acceptance limit.')
+    elif ((n <= 35) & (n > 0)):
+        t = (pd.read_csv(f'{CWD}/static/KS_leq_35_values.csv',
+                           delimiter='|', skiprows=1, header=None,
+                           names=['n',.9,.95,.99])
+             .set_index('n')
+             .astype(float))
+        return t.loc[n, 1 - sig_level]
+    elif n > 35:
+        return np.sqrt(-.5 * np.log((sig_level) / 2.)) / np.sqrt(n)
+
+    
+def _apply_stabilising_transformation(u):
+    '''
+    Applies the right-tail stabilising
+    transformation from Kimber 1985 to
+    a potentially power law distributed
+    sample. Eq. 19 in Maschberger and Kroupa 2009.
+
+    Used in :func:stabilised_KS_statistic
+
+    Parameters:
+    ------------
+    u : array
+        cumulative distribution
+
+    Returns:
+    -----------
+    array : stabilised distribution
+    '''
+    u = np.array(u)
+    if (u < 0).any():
+        raise ValueError("CDF values must be positive.")#validate input for sqrt
+    u = .5 + .5 * u
+    S0 = 2. / np.pi * np.arcsin(np.sqrt(u))
+    return 2. * S0  -1.
+
+    
+def generate_random_power_law_distribution(a, b, g, size=1, seed=None):
+    """Power-law generator for pdf(x)\propto x^{g-1}
+    for a<=x<=b
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    r = np.random.random(size=size)
+    ag, bg = a**g, b**g
+    return (ag + (bg - ag)*r)**(1./g)
