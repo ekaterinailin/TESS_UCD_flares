@@ -44,7 +44,7 @@ class FFD(object):
                  beta=None, beta_err=None, total_obs_time=1.,
                  ID=None):
         
-        self.f = dataframe
+        self.f = f
         self.alpha = alpha
         self.alpha_err = alpha_err
         self.beta = beta
@@ -55,7 +55,28 @@ class FFD(object):
     def ed_and_freq(self, energy_correction=False,
                     recovery_probability_correction=False,
                     multiple_stars=False):
+        """Take the flare table and return the FFD with
+        different or no corrections. tot_obs_time is used to
+        convert counts to frequencies and defines its unit.
         
+        Parameters:
+        ------------
+        energy_correction: bool, default False
+            use ed_corr instead of ed_rec
+        recovery_probability_correction: bool, default False
+            multiply inverse recovery probabilities instead
+            of assuming the recovery probability was 1
+        multiple_stars: bool, default False
+            apply a first order approximation to account
+            for the effects of stacking FFDs of stars with 
+            different detection thresholds
+            
+        Return:
+        -------
+        ed, freq - equivalent durations and corresponding
+                   cumulative frequencies
+        """
+        # Convert human readable cases to keywords
         if ((energy_correction==False) & (recovery_probability_correction==False)):
             key = "no_corr"
         
@@ -71,44 +92,70 @@ class FFD(object):
             
         ed, f = self._ed_and_counts(key, multiple_stars)
         
-        return ed, f / self.total_obs_time
+        return ed, f / self.total_obs_time # convert counts to frequencies
     
     def _ed_and_counts(self, key, multiple_stars):
+        """Sub function to ed_and_func.
+        
+        Parameters:
+        ------------
+        key : str
+            defines type of correction to apply to FFD
+        multiple_stars: bool
+            if True will use a first order approximation to
+            account for stacking FFDs of multiple stars
+            
+        Return:
+        -------
+        ed, counts - equivalent durations and respective counts in 
+        a cumulative FFD
+        
+        """
         
         def cum_dist(df, col, ID):
+            """simple cumulative distribution."""
             
-            return np.cumsum(np.ones_like(df[col].values))
+            return np.arange(1, df[col].shape[0] + 1, 1)
         
-        def getfreq_cum_dist(df, col, ID):
+        def get_multistar_factors_cum_dist(df, col, ID):
+            """simple cumulative distribution 
+            accounting for multiple stars with different
+            detection thresholds in FFDs"""
             
-            freq = _get_freq(df, ID, col)
+            freq = _get_multistar_factors(df, ID, col)
             return np.cumsum(1 / freq)
         
         def cum_dist_rec_prob(df, col, ID):
+            """cumulative distribution accounting for
+            recovery probabilities of individual flares"""
             
             return np.cumsum(1. / df.recovery_probability.values)
         
-        def getfreq_cum_dist_rec_prob(df, col, ID):
+        def get_multistar_factors_cum_dist_rec_prob(df, col, ID):
+            """cumulative distribution accounting for
+            recovery probabilities of individual flares  
+            and multiple stars with different detection 
+            thresholds in FFDs"""
             
-            freq = _get_freq(df, ID, col)
+            freq = _get_multistar_factors(df, ID, col)
             return np.cumsum(1. / df.recovery_probability.values / freq)
             
-        
+        # Different keys call different corrections
         vals = {"no_corr":{False: ["ed_rec", cum_dist],
-                           True: ["ed_rec", getfreq_cum_dist]},
+                           True: ["ed_rec", get_multistar_factors_cum_dist]},
                 "ed_corr":{False: ["ed_corr", cum_dist],
-                           True: ["ed_corr", getfreq_cum_dist]},
+                           True: ["ed_corr", get_multistar_factors_cum_dist]},
                 "edrecprob_corr":{False: ["ed_corr", cum_dist_rec_prob],
-                           True: ["ed_corr", getfreq_cum_dist_rec_prob]}}
+                           True: ["ed_corr", get_multistar_factors_cum_dist_rec_prob]}}
         
-        df = self.f.copy(deep=True)
-        col, func = vals[key][multiple_stars]
+        df = self.f.copy(deep=True) #make a copy to sort safely without affecting self.f
+        col, func = vals[key][multiple_stars] # retrieve ED type (corrected or not), and function for counts
         df = df.sort_values(by=col, ascending=False)
         
-        ed = df[col].values
-        freq = func(df, col, self.ID)
+        ed = df[col].values # get the right EDs
+        counts = func(df, col, self.ID) # get the (corrected) flare counts
         
-        return ed, freq
+        return ed, counts
     
         
     def fit_beta_to_powerlaw(self, ed, freq, mode="ED"):
@@ -338,51 +385,90 @@ def _calculate_number_of_exceeding_values(data, alpha, maxlim=1e8, **kwargs):
                          ' Check your inputs.')
     return len(np.where(pdist > np.max(data))[0])
     
-def _get_freq(dataframe, ID, sort):
+def _get_multistar_factors(dataframe, ID, sort):
+    """Returns an array of factors to apply
+    to the detected flares. Accounts for the
+    number of targets with different detection
+    thresholds that contribute to the sample
     
+    factor = 1 / number of targets that contribute
+    their flares above a given flare energy.
+    
+    This is a first order approximation that is
+    assuming that the least energetic flare in a 
+    light curve is just above the detection limit.
+    
+    If the smallest flare is significantly above
+    the detection limit of a target's light curve
+    small energy flare frequencies will be 
+    overestimated. 
+    
+    The steeper the FFD the better the approximation.
+    
+    
+    Parameters:
+    -----------
+    """
     freq = []
-    df = dataframe.copy(deep=True)
+    df = dataframe.copy(deep=True)# make a copy to safely sort the dataframe
+    
+    # check if sort exists, otherwise throw error
     try:
         df = df.sort_values(by=sort, ascending=True)
     except:
         raise KeyError(f"The flare table needs a {sort} column.")
     
+    # loop over sorted dataframe and find the number of targets
+    # that contribution to the sub-frame
     for i in range(df.shape[0]):
         try:
-            f = df.iloc[:i+1]
-            freq.append(len(set(f[ID].values)))
-        except KeyError:
+            f = df.iloc[:i+1] #sub-frame
+            freq.append(len(set(f[ID].values))) #append number of targets
+        except KeyError: # where are the unique target ID
             raise KeyError("Pass the column name of target IDs to the FFD constructor: ID = ???.")
 
-    return np.array(freq[::-1]) / freq[-1]
+    return np.array(freq[::-1]) / freq[-1] #factor for maximum energy goes first and must be 1, the rest < 1
 
-def ML_powerlaw_estimator(x0, EDs):
+def ML_powerlaw_estimator(alpha, ed):
     '''
-    Power law ML estimator from
+    Power law maximum likelihood estimator from
     Maschberger and Kroupa (2009),
     formula (9).
 
     Parameters:
     -----------
-    data : Series or np.array
-        data that is suspected to follow
-        a power law relation
+    alpha : float
+        approximate value for power law exponent  
+    ed : array
+        ED or energy array
+    
+    Return:
+    --------
+    absolute value of left side of formula (9)
+    To find MLE for alpha, minimize this term.
     '''
-    if np.array(x0 <= 1.).any():
+    if np.array(alpha <= 1.).any():
         raise ValueError('Power law exponent must be >1.')
-    n = len(EDs)
+        
+    n = len(ed)
     if n == 0:
         raise ValueError('No data.')
-    Y = EDs.min()
+    
+    # Calculate Y variable in formula (9)
+    Y = ed.min()
     if Y < 0:
         raise ValueError('Negative value encountered in data.')
-    x0 = de_bias_alpha(n, x0)
-    Yexp = (np.power(Y,1-x0))
-    T = np.log(EDs).sum()
-    Z = de_biased_upper_limit(EDs, x0)
-    Zexp = (np.power(Z,1-x0))
+    
+    # De-bias alpha following Maschberger and Kroupa 2009    
+    alpha = de_bias_alpha(n, alpha)
+    
+    # Calculate the remaining variables in formula (9)
+    Yexp = (np.power(Y, 1 - alpha))
+    T = np.log(ed).sum()
+    Z = de_biased_upper_limit(ed, alpha)
+    Zexp = (np.power(Z, 1 - alpha))
 
-    return np.abs(n / (x0 - 1) + n * ((Zexp * np.log(Z) - Yexp * np.log(Y)) / (Zexp - Yexp)) - T)
+    return np.abs(n / (alpha - 1) + n * ((Zexp * np.log(Z) - Yexp * np.log(Y)) / (Zexp - Yexp)) - T)
     
 
 def de_biased_upper_limit(data, a):

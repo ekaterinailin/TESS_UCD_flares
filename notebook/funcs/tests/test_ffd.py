@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ..ffd import (FFD,
-                   _get_freq,
+                   _get_multistar_factors,
                    ML_powerlaw_estimator,
                    de_biased_upper_limit,
                    de_bias_alpha,
@@ -143,15 +143,15 @@ def test_ed_and_freq():
                                recovery_probability_correction=True,
                                 multiple_stars=False)
 
-def test__get_freq():
+def test__get_multistar_factors():
     
     # Generate a flare table
     N = 20
     testdf = pd.DataFrame({"ID":np.arange(N)%4,
                            "sortcol":np.arange(200, 200-N, -1)})
     
-    # call _get_freq
-    f = _get_freq(testdf, "ID", "sortcol")
+    # call _get_multistar_factors
+    f = _get_multistar_factors(testdf, "ID", "sortcol")
     
     # Check if the result is as expected
     assert (f == np.array([1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
@@ -160,11 +160,11 @@ def test__get_freq():
     # If the required keys don't exist throw errors
     with pytest.raises(KeyError):
         testdf = pd.DataFrame({"ID":np.arange(N)%4})
-        f = _get_freq(testdf, "ID", "sortcol")
+        f = _get_multistar_factors(testdf, "ID", "sortcol")
 
     with pytest.raises(KeyError):
         testdf = pd.DataFrame({"sortcol":np.arange(200, 200-N, -1)})
-        f = _get_freq(testdf, "ID", "sortcol")
+        f = _get_multistar_factors(testdf, "ID", "sortcol")
         
 def test_fit_powerlaw():
     # Generate a flare table
