@@ -163,6 +163,21 @@ class FFD(object):
         Fit beta via non-linear least squares to a power
         law with given alpha using the cumulative
         FFD. Generate uncertainty using jackknife algorithm.
+        
+        Parameters:
+        -----------
+        ed : array
+            ED/energies in the FFD
+        freq : array
+            frequencies corresponding to ED in a cumulative FFD
+        mode : str
+            "ED" or "energy" will set the starting value for the
+            least square minimization
+        
+        Return:
+        -------
+        _beta, beta, beta_err -  array, float, float
+            jackknife sample of beta values, mean beta, beta uncertainty
         '''
         def LSQ(x0, ed, freq, alpha):
             zw = ((x0 / (np.power(ed,alpha-1.) * (alpha-1.))-freq)**2).sum()
