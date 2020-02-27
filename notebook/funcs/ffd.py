@@ -90,9 +90,9 @@ class FFD(object):
             raise KeyError("This set of parameters for energy correction, recovery" \
                            " probability correction is not implemented.")
             
-        ed, f = self._ed_and_counts(key, multiple_stars)
+        ed, f, counts = self._ed_and_counts(key, multiple_stars)
         
-        return ed, f / self.total_obs_time # convert counts to frequencies
+        return ed, f / self.total_obs_time, counts # convert counts to frequencies
     
     def _ed_and_counts(self, key, multiple_stars):
         """Sub function to ed_and_func.
@@ -115,7 +115,7 @@ class FFD(object):
         def cum_dist(df, col, ID):
             """simple cumulative distribution."""
             
-            return np.arange(1, df[col].shape[0] + 1, 1)
+            return np.arange(1, df[col].shape[0] + 1, 1), np.ones_like(df[col].values)
         
         def get_multistar_factors_cum_dist(df, col, ID):
             """simple cumulative distribution 
@@ -123,13 +123,13 @@ class FFD(object):
             detection thresholds in FFDs"""
             
             freq = _get_multistar_factors(df, ID, col)
-            return np.cumsum(1 / freq)
+            return np.cumsum(1 / freq), 1 / freq
         
         def cum_dist_rec_prob(df, col, ID):
             """cumulative distribution accounting for
             recovery probabilities of individual flares"""
             
-            return np.cumsum(1. / df.recovery_probability.values)
+            return np.cumsum(1. / df.recovery_probability.values), 1. / df.recovery_probability.values
         
         def get_multistar_factors_cum_dist_rec_prob(df, col, ID):
             """cumulative distribution accounting for
@@ -138,7 +138,7 @@ class FFD(object):
             thresholds in FFDs"""
             
             freq = _get_multistar_factors(df, ID, col)
-            return np.cumsum(1. / df.recovery_probability.values / freq)
+            return np.cumsum(1. / df.recovery_probability.values / freq), 1. / df.recovery_probability.values / freq
             
         # Different keys call different corrections
         vals = {"no_corr":{False: ["ed_rec", cum_dist],
@@ -153,9 +153,9 @@ class FFD(object):
         df = df.sort_values(by=col, ascending=False)
         
         ed = df[col].values # get the right EDs
-        counts = func(df, col, self.ID) # get the (corrected) flare counts
+        cumcounts, counts = func(df, col, self.ID) # get the (corrected) flare counts
         
-        return ed, counts
+        return ed, cumcounts, counts
     
         
     def fit_beta_to_powerlaw(self, ed, freq, mode="ED"):
@@ -462,8 +462,10 @@ def ML_powerlaw_estimator(alpha, ed):
     absolute value of left side of formula (9)
     To find MLE for alpha, minimize this term.
     '''
+
     if np.array(alpha <= 1.).any():
-        raise ValueError('Power law exponent must be >1.')
+        #Power law exponent must be >1.
+        return np.nan
         
     n = len(ed)
     if n == 0:
