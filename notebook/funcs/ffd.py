@@ -235,8 +235,8 @@ class FFD(object):
             mi, ma = custom_xlim
             x = np.linspace(mi, ma, 3)
         y = self.beta / np.abs(self.alpha - 1.) * np.power(x,-self.alpha + 1.)
-        ax.plot(x, y,  **kwargs)
-        return
+        a = ax.plot(x, y,  **kwargs)
+        return a, x, y
 
     def fit_powerlaw(self, ed, alims=[1.01,3.]):
         '''
