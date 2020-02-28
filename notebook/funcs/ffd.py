@@ -33,7 +33,7 @@ class FFD(object):
         power law intercept
     beta_err : float
         power law intercept uncertainty
-    total_obs_time: float
+    tot_obs_time: float
         total observing time during which
         the flares in f were detected
     ID : str
@@ -41,7 +41,7 @@ class FFD(object):
         
     """
     def __init__(self, f=None, alpha=None, alpha_err=None,
-                 beta=None, beta_err=None, total_obs_time=1.,
+                 beta=None, beta_err=None, tot_obs_time=1.,
                  ID=None):
         
         self.f = f
@@ -49,7 +49,7 @@ class FFD(object):
         self.alpha_err = alpha_err
         self.beta = beta
         self.beta_err = beta_err
-        self.total_obs_time = total_obs_time
+        self.tot_obs_time = tot_obs_time
         self.ID = ID
     
     def ed_and_freq(self, energy_correction=False,
@@ -92,7 +92,7 @@ class FFD(object):
             
         ed, f, counts = self._ed_and_counts(key, multiple_stars)
         
-        return ed, f / self.total_obs_time, counts # convert counts to frequencies
+        return ed, f / self.tot_obs_time, counts # convert counts to frequencies
     
     def _ed_and_counts(self, key, multiple_stars):
         """Sub function to ed_and_func.
