@@ -69,21 +69,21 @@ def test_ed_and_freq():
     # --------------------------------------------------------------------
 
     # no correction
-    ed, freq = ffd.ed_and_freq(energy_correction=False,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=False,
                                recovery_probability_correction=False,
                                 multiple_stars=False)
     assert (freq == np.arange(1,201)).all()
     assert (ed == df.ed_rec.sort_values(ascending=False)).all()
 
     # only energy correction
-    ed, freq = ffd.ed_and_freq(energy_correction=True,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=True,
                                recovery_probability_correction=False,
                                 multiple_stars=False)
     assert (freq == np.arange(1,201)).all()
     assert (ed == df.ed_corr.sort_values(ascending=False)).all()
 
     # energy and frequency correction
-    ed, freq = ffd.ed_and_freq(energy_correction=True,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=True,
                                recovery_probability_correction=True,
                                 multiple_stars=False)
 
@@ -97,14 +97,14 @@ def test_ed_and_freq():
 
     # You must pass a Key to ID
     with pytest.raises(KeyError):
-        ed, freq = ffd.ed_and_freq(energy_correction=False,
+        ed, freq, counts = ffd.ed_and_freq(energy_correction=False,
                                recovery_probability_correction=False,
                                 multiple_stars=True)
 
     ffd = FFD(df,ID="TIC")
 
     # no correction
-    ed, freq = ffd.ed_and_freq(energy_correction=False,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=False,
                                recovery_probability_correction=False,
                                 multiple_stars=True)
 
@@ -112,7 +112,7 @@ def test_ed_and_freq():
     assert (ed == df.ed_rec.sort_values(ascending=False)).all()
 
     # only energy correction
-    ed, freq = ffd.ed_and_freq(energy_correction=True,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=True,
                                recovery_probability_correction=False,
                                 multiple_stars=True)
 
@@ -122,7 +122,7 @@ def test_ed_and_freq():
     _f = copy.copy(freq)
 
     # energy and frequency correction
-    ed, freq = ffd.ed_and_freq(energy_correction=True,
+    ed, freq, counts = ffd.ed_and_freq(energy_correction=True,
                                recovery_probability_correction=True,
                                 multiple_stars=True)
 
@@ -134,12 +134,12 @@ def test_ed_and_freq():
     # -------------------------------------------------------------
     
     with pytest.raises(KeyError):
-        ed, freq = ffd.ed_and_freq(energy_correction=False,
+        ed, freq, counts = ffd.ed_and_freq(energy_correction=False,
                                recovery_probability_correction=True,
                                 multiple_stars=True)
         
     with pytest.raises(KeyError):
-        ed, freq = ffd.ed_and_freq(energy_correction=False,
+        ed, freq, counts = ffd.ed_and_freq(energy_correction=False,
                                recovery_probability_correction=True,
                                 multiple_stars=False)
 
@@ -177,73 +177,75 @@ def test_fit_powerlaw():
                        })
 
     # init an FFD object
-    ffd = FFD(df)
+    ffd = FFD(f=df)
+    ed, freq, counts = ffd.ed_and_freq()
     
     # check the result
-    assert (1.963553855895996, 0.08012203082491737) == ffd.fit_powerlaw(df.ed_rec.values)
-    
-def test_is_powerlaw_truncated():
-    # Generate a flare table
+    assert (1.963553855895996, 0.08012203082491737) == ffd.fit_powerlaw()
+
+#------------------------------ TESTING is_powerlaw_truncated() ---------------
+
+cases = [(1000, False), (900, False), (800, False),
+         (200, True), (20, True)]
+
+@pytest.mark.parametrize("l,i", cases)
+def test_is_powerlaw_truncated(l,i):
     a, b, g, size = 10, 1e3, -1, 200
     pwl = generate_random_power_law_distribution(a, b, g, size=size, seed=80)
-    ffd = FFD()
-    ffd.alpha = 2.
-
-    # sort in ascending order
-    sortpwl = np.sort(pwl)
-
-    # remove highest energies to see where it starts to become truncated
-    assert ffd.is_powerlaw_truncated(pwl) == False
-    assert ffd.is_powerlaw_truncated(sortpwl[:-8]) == False
-    assert ffd.is_powerlaw_truncated(sortpwl[:-9]) == True
-    assert ffd.is_powerlaw_truncated(sortpwl[:-20]) == True
-    assert ffd.is_powerlaw_truncated(sortpwl[:-100]) == True
+    f = pd.DataFrame({"ed_rec":pwl})
+    simple_truncated_ffd = FFD(f=f[f.ed_rec < l])#truncate at 200s 
+    simple_truncated_ffd.alpha = 2.
+    ed, freq, counts = simple_truncated_ffd.ed_and_freq()
+    assert simple_truncated_ffd.is_powerlaw_truncated() == i
     
-    
+#--------------------------------------------------------------------------------
+
 def test_is_powerlaw():
 
     a, b, g, size = 10, 1e3, -1., 200
     pwl = generate_random_power_law_distribution(a, b, g, size=size, seed=80)
 
     # init an FFD object
-    ffd = FFD()
-
+    ffd = FFD(f=pd.DataFrame({"ed_rec":pwl}))
+    ffd.ed_and_freq()
+    
     ffd.alpha = 2.
     # pwl is a power law with exponent 2
-    assert ffd.is_powerlaw(pwl)
+    assert ffd.is_powerlaw()
 
     ffd.alpha = 2.3
     # pwl is not a power law with exponent 2
-    assert not ffd.is_powerlaw(pwl)
+    assert not ffd.is_powerlaw()
 
 
     a, b, g, size = 10, 1e3, -1., 20
     pwl = generate_random_power_law_distribution(a, b, g, size=size, seed=80)
 
     # init an FFD object
-    ffd = FFD()
+    ffd = FFD(f=pd.DataFrame({"ed_rec":pwl}))
+    ffd.ed_and_freq()
 
     ffd.alpha = 2.
     # pwl is a power law with exponent 2
-    assert ffd.is_powerlaw(pwl)
+    assert ffd.is_powerlaw()
 
     ffd.alpha = 2.3
     # pwl is not a power law with exponent 2 but 20 is too small of a sample
-    assert ffd.is_powerlaw(pwl)
+    assert ffd.is_powerlaw()
 
     a, b, g, size = 10, 1e3, -1., 50
     pwl = generate_random_power_law_distribution(a, b, g, size=size, seed=80)
+    ffd = FFD(f=pd.DataFrame({"ed_rec":pwl}))
 
-    with pytest.raises(TypeError):
+    with pytest.raises(AssertionError): #throw error when alpha is missing
         ffd.is_powerlaw()
     
 def test_ML_powerlaw_estimator():
     dataformat = [np.array, pd.Series]
     for df in dataformat:
         ed = df([1,1,1,1,2,2,4])
-        x0 = 1.
-        with pytest.raises(ValueError):
-            ML_powerlaw_estimator(x0, ed)
+        x0 = .9
+        assert np.isnan(ML_powerlaw_estimator(x0, ed))
         x0 = 1.5
         assert ML_powerlaw_estimator(x0, ed) == pytest.approx(1.6190804181576444)
         ed = df([])
