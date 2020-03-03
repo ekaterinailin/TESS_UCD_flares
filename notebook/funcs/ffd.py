@@ -154,7 +154,8 @@ class FFD(object):
         def cum_dist(df, col, ID):
             """simple cumulative distribution."""
             
-            return np.arange(1, df[col].shape[0] + 1, 1) / self.tot_obs_time, np.ones_like(df[col].values)
+            return (np.arange(1, df[col].shape[0] + 1, 1) / self.tot_obs_time,
+                    np.ones_like(df[col].values))
         
         def get_multistar_factors_cum_dist(df, col, ID):
             """simple cumulative distribution 
@@ -222,7 +223,7 @@ class FFD(object):
             jackknife sample of beta values, mean beta, beta uncertainty
         '''
         def LSQ(x0, ed, freq, alpha):
-            zw = ((x0 / (np.power(ed,alpha-1.) * (alpha-1.))-freq)**2).sum()
+            zw = ( (x0 / ( np.power(ed,alpha-1.) * (alpha-1.) )-freq)**2).sum()
             return np.sqrt(zw)
 
         N = len(self.ed)
@@ -236,11 +237,8 @@ class FFD(object):
                               disp=0)[0] for i in range(N)])
 
         #cumulative beta = beta_cum
-        beta = _beta.mean() / self.tot_obs_time
-        beta_err = np.sqrt( (N-1) / N * ( (_beta / self.tot_obs_time - beta)**2 ).sum() )
-
-        #power law beta = beta_cum * |alpha-1|
-        beta = beta * np.abs(self.alpha - 1.)
+        beta = _beta.mean()
+        beta_err = np.sqrt( (N-1) / N * ( (_beta - beta)**2 ).sum() )
 
         #propagate errors on alpha to beta
         beta_err = np.sqrt(beta_err**2 * (self.alpha - 1.)**2 + beta**2 * self.alpha_err**2)
@@ -321,7 +319,8 @@ class FFD(object):
         
         return self.alpha, self.alpha_err
     
-    def is_powerlaw_truncated(self, rejection=(.15, .05), nthresh=100):
+    def is_powerlaw_truncated(self, count_ed=False,
+                              rejection=(.15, .05), nthresh=100):
         '''
         Apply the exceedance test recommended by
         Maschberger and Kroupa 2009. 
@@ -341,23 +340,27 @@ class FFD(object):
         True if power law not consistent with an un-truncated power law
         False if power law is consitent with an un-truncated power law
         '''
-
-        mean, std = calculate_average_number_of_exceeding_values(self.ed, self.alpha, 500)
+        if count_ed == True:
+            ed = self.count_ed
+        elif count_ed == False:
+            ed = self.ed
+            
+        mean, std = calculate_average_number_of_exceeding_values(ed, self.alpha, 500)
 
         if self.alpha > 2.:
             warnings.warn('Power law exponent is steep. '
                           'Power of statistical tests decreases '
                           'according to Maschberger and Kroupa 2009.')
-        if len(self.ed) >= nthresh:
+        if len(ed) >= nthresh:
             truncation_limit = rejection[1]
         else:
             truncation_limit = rejection[0]
 
-        truncated = (mean / len(self.ed) > truncation_limit)
+        truncated = (mean / len(ed) > truncation_limit)
 
         return truncated
     
-    def is_powerlaw(self, sig_level=0.05):
+    def is_powerlaw(self, count_ed=False, sig_level=0.05):
         '''
         Test if we must reject the power law hypothesis
         judging by the stabilised Kolmogorov-Smirnov
@@ -376,8 +379,13 @@ class FFD(object):
         True if we cannot reject the power law hypothesis.
         False if we must reject the power law hypothesis.
         '''
-        truncated = self.is_powerlaw_truncated(self.ed)
-        KS = stabilised_KS_statistic(self.ed, alpha=self.alpha, truncated=truncated)
+        if count_ed == True:
+            ed = self.count_ed
+        elif count_ed == False:
+            ed = self.ed
+            
+        truncated = self.is_powerlaw_truncated(count_ed=count_ed)
+        KS = stabilised_KS_statistic(ed, alpha=self.alpha, truncated=truncated)
         limit = calculate_KS_acceptance_limit(len(self.ed), sig_level=sig_level)
         ispowerlaw = KS < limit
         if ispowerlaw == False:
@@ -738,7 +746,7 @@ def _get_frequency_corrected_ed_sample(ed, counts):
     for underlying count frequencies using duplicates
     """
     eds = []
-    for e, n in zip(ed,counts):
+    for e, n in zip(ed, counts):
         eds.append(int(np.rint(n))*[e])
     return np.array([i for E in eds for i in E])
 
