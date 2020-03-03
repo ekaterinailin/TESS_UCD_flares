@@ -44,12 +44,14 @@ class FFD(object):
         frequencies of EDs in cumulative FFD, sorted like ed
     count_ed : array
         frequency adjusted ed sample
+    multiple_stars : bool
+        True when
         
         
     """
     def __init__(self, f=None, alpha=None, alpha_err=None,
                  beta=None, beta_err=None, tot_obs_time=1.,
-                 ID=None):
+                 ID=None, multiple_stars=None):
         
         self.f = f
         self.alpha = alpha
