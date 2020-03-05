@@ -9,17 +9,18 @@ import os
 
 CWD = os.path.dirname(os.path.abspath(__file__))
 
+
 class FFD(object):
     """Flare frequency distribution.
     alpha and beta refer to a power law that
-    can be used to model the FFD. 
-    
+    can be used to model the FFD.
+
     dN/dE = beta * E^(-alpha)
-    
+
     N - number of flares
     E - energy or equivalent duration
-    
-    
+
+
     Attributes:
     -----------
     f : DataFrame
@@ -28,7 +29,7 @@ class FFD(object):
     alpha : float
         power law exponent
     alpha_err : float
-        power law exponent uncertainty 
+        power law exponent uncertainty
     beta : float
         power law intercept
     beta_err : float
@@ -45,14 +46,15 @@ class FFD(object):
     count_ed : array
         frequency adjusted ed sample
     multiple_stars : bool
-        True when
-        
-        
+        True when ed_and_freq was called with multiple_stars
+        flag set
+
+
     """
     def __init__(self, f=None, alpha=None, alpha_err=None,
                  beta=None, beta_err=None, tot_obs_time=1.,
-                 ID=None, multiple_stars=None):
-        
+                 ID=None, multiple_stars=False):
+
         self.f = f
         self.alpha = alpha
         self.alpha_err = alpha_err
@@ -63,8 +65,20 @@ class FFD(object):
         self._freq = None
         self._count_ed = None
         self.ID = ID
-        
-    
+        self._multiple_stars = multiple_stars
+
+    # Set all the setters and getters for attributes
+    # that only methods should be allowed to change:
+
+    @property
+    def multiple_stars(self):
+        return self._multiple_stars
+
+    @multiple_stars.setter
+    def multiple_stars(self, multiple_stars):
+        print(f"Setting multiple_stars flag with {multiple_stars}.")
+        self._multiple_stars = multiple_stars
+
     @property
     def ed(self):
         return self._ed
@@ -73,7 +87,7 @@ class FFD(object):
     def ed(self, ed):
         print(f"Setting ED with new values, size {len(ed)}.")
         self._ed = ed
-              
+
     @property
     def freq(self):
         return self._freq
@@ -82,23 +96,26 @@ class FFD(object):
     def freq(self, freq):
         print(f"Setting frequency values with new values, size {len(freq)}.")
         self._freq = freq
-        
+
     @property
     def count_ed(self):
         return self._count_ed
 
     @count_ed.setter
     def count_ed(self, count_ed):
-        print(f"Setting frequency adjusted count values with new values, size {len(count_ed)}.")
+        print(f"Setting frequency adjusted count values "
+              f"with new values, size {len(count_ed)}.")
         self._count_ed = count_ed
-    
+
+# -----------------------------------------------------------------------
+
     def ed_and_freq(self, energy_correction=False,
                     recovery_probability_correction=False,
                     multiple_stars=False):
         """Take the flare table and return the FFD with
         different or no corrections. tot_obs_time is used to
         convert counts to frequencies and defines its unit.
-        
+
         Parameters:
         ------------
         energy_correction: bool, default False
@@ -108,36 +125,41 @@ class FFD(object):
             of assuming the recovery probability was 1
         multiple_stars: bool, default False
             apply a first order approximation to account
-            for the effects of stacking FFDs of stars with 
+            for the effects of stacking FFDs of stars with
             different detection thresholds
-            
+
         Return:
         -------
-        ed, freq - equivalent durations and corresponding
-                   cumulative frequencies
+        ed, freq, count_ed - equivalent durations and corresponding
+                             cumulative frequencies, and frequency
+                             adjusted event sample. See `_ed_and_counts`
+                             method for details.
         """
         # Convert human readable cases to keywords
-        if ((energy_correction==False) & (recovery_probability_correction==False)):
+        if ((energy_correction is False) &
+            (recovery_probability_correction is False)):
             key = "no_corr"
-        
-        elif ((energy_correction==True) & (recovery_probability_correction==False)):
+
+        elif ((energy_correction is True) &
+              (recovery_probability_correction is False)):
             key = "ed_corr"
-        
-        elif ((energy_correction==True) & (recovery_probability_correction==True)):
+
+        elif ((energy_correction is True) &
+              (recovery_probability_correction is True)):
             key = "edrecprob_corr"
-            
+
         else:
-            raise KeyError("This set of parameters for energy correction, recovery" \
-                           " probability correction is not implemented.")
-            
-        ed, f, count_ed = self._ed_and_counts(key, multiple_stars)
-        
-        return ed, f, count_ed
-    
-    
+            raise KeyError("This set of parameters for energy "
+                           "correction, recovery probability "
+                           "correction is not implemented. You must"
+                           " set energy_correction=True if you wish to "
+                           "set recovery_probability_correction=True.")
+
+        return self._ed_and_counts(key, multiple_stars)
+
     def _ed_and_counts(self, key, multiple_stars):
         """Sub function to ed_and_func.
-        
+
         Parameters:
         ------------
         key : str
@@ -145,112 +167,127 @@ class FFD(object):
         multiple_stars: bool
             if True will use a first order approximation to
             account for stacking FFDs of multiple stars
-            
+
         Return:
         -------
-        ed, counts - equivalent durations and respective counts in 
-        a cumulative FFD
-        
+        ed, freq, count_ed - equivalent durations and corresponding
+                             cumulative frequencies, and frequency
+                             adjusted event sample
         """
-        
+
+        # df, ID, col are flare table, identifier column name in df,
+        # and column name for the ED array in df in each of the
+        # functions below.
+
+        # Each function return two arrays: sorted flare EDs or energies,
+        # and their respective frequencies.
+
         def cum_dist(df, col, ID):
             """simple cumulative distribution."""
-            
+
             return (np.arange(1, df[col].shape[0] + 1, 1) / self.tot_obs_time,
                     np.ones_like(df[col].values))
-        
-        def get_multistar_factors_cum_dist(df, col, ID):
-            """simple cumulative distribution 
+
+        def get_msf_cum_dist(df, col, ID):
+            """simple cumulative distribution
             accounting for multiple stars with different
             detection thresholds in FFDs"""
-            
+
             freq = _get_multistar_factors(df, ID, col)
+            self.multiple_stars = True
             return (np.cumsum(1 / freq) / self.tot_obs_time,
                     1 / freq)
-        
+
         def cum_dist_rec_prob(df, col, ID):
             """cumulative distribution accounting for
             recovery probabilities of individual flares"""
-            
-            return (np.cumsum(1. / df.recovery_probability.values) / self.tot_obs_time,
-                    1. / df.recovery_probability.values)
-        
-        def get_multistar_factors_cum_dist_rec_prob(df, col, ID):
+            freq = (np.cumsum(1. / df.recovery_probability.values) /
+                    self.tot_obs_time)
+            return freq, 1. / df.recovery_probability.values
+
+        def get_msf_cumdist_recprob(df, col, ID):
             """cumulative distribution accounting for
-            recovery probabilities of individual flares  
-            and multiple stars with different detection 
+            recovery probabilities of individual flares
+            and multiple stars with different detection
             thresholds in FFDs"""
-            
-            freq = _get_multistar_factors(df, ID, col)
-            return (np.cumsum(1. / df.recovery_probability.values / freq) / self.tot_obs_time, 
-                    1. / df.recovery_probability.values / freq)
-            
-        # Different keys call different corrections
-        vals = {"no_corr":{False: ["ed_rec", cum_dist],
-                           True: ["ed_rec", get_multistar_factors_cum_dist]},
-                "ed_corr":{False: ["ed_corr", cum_dist],
-                           True: ["ed_corr", get_multistar_factors_cum_dist]},
-                "edrecprob_corr":{False: ["ed_corr", cum_dist_rec_prob],
-                           True: ["ed_corr", get_multistar_factors_cum_dist_rec_prob]}}
-        
-        df = self.f.copy(deep=True) #make a copy to sort safely without affecting self.f
-        col, func = vals[key][multiple_stars] # retrieve ED type (corrected or not), and function for counts
+
+            freq_ = _get_multistar_factors(df, ID, col)
+            self.multiple_stars = True
+            cfreq = (np.cumsum(1. / df.recovery_probability.values / freq_) /
+                    self.tot_obs_time)
+            return cfreq, 1. / df.recovery_probability.values / freq_
+
+        # Different keys call different correction procedures
+        vals = {"no_corr": {False: ["ed_rec", cum_dist],
+                            True: ["ed_rec", get_msf_cum_dist]},
+                "ed_corr": {False: ["ed_corr", cum_dist],
+                            True: ["ed_corr", get_msf_cum_dist]},
+                "edrecprob_corr": {False: ["ed_corr", cum_dist_rec_prob],
+                                   True: ["ed_corr", get_msf_cumdist_recprob]}
+                }
+        # make a copy to sort safely without affecting self.f
+        df = self.f.copy(deep=True)
+        # retrieve ED type (corrected or not), and function for counts
+        col, func = vals[key][multiple_stars]
         df = df.sort_values(by=col, ascending=False)
-        
-        ed = df[col].values # get the right EDs
-        freq, counts = func(df, col, self.ID) # get the (corrected) flare counts
-        
+
+        ed = df[col].values  # get the right EDs
+        # get the (corrected) flare counts
+        freq, counts = func(df, col, self.ID)  
+
         self.ed = ed
         self.freq = freq
         self.count_ed = _get_frequency_corrected_ed_sample(ed, counts)
-        
+
         return self.ed, self.freq, self.count_ed
-    
-        
+
     def fit_beta_to_powerlaw(self, mode="ED"):
-        '''
-        Fit beta via non-linear least squares to a power
+        '''Fit beta via non-linear least squares to a power
         law with given alpha using the cumulative
         FFD. Generate uncertainty using jackknife algorithm.
-        
+
         Parameters:
         -----------
         mode : str
-            "ED" or "energy" will set the starting value for the
+            ED or energy will set the starting value for the
             least square minimization
-        
+
         Return:
         -------
         _beta, beta, beta_err -  array, float, float
             jackknife sample of beta values, mean beta, beta uncertainty
         '''
         def LSQ(x0, ed, freq, alpha):
-            zw = ( (x0 / ( np.power(ed,alpha-1.) * (alpha-1.) )-freq)**2).sum()
+            zw = ((x0 /
+                   (np.power(ed, alpha - 1.) * (alpha - 1.)) - freq)**2).sum()
             return np.sqrt(zw)
 
         N = len(self.ed)
-        if N==0:
+        if N == 0:
             raise ValueError('No data.')
-            
-        #jackknife uncertainty
-        x0starts = {'ED' : 10, 'energy' : 1e25}
-        _beta = np.array([fmin(LSQ,x0=x0starts[mode],
-                              args=(np.delete(self.ed,i),np.delete(self.freq,i),self.alpha),
+
+        # jackknife uncertainty
+        x0starts = {'ED': 10, 'energy': 1e25}
+        _beta = np.array([fmin(LSQ, x0=x0starts[mode],
+                              args=(np.delete(self.ed, i),
+                                    np.delete(self.freq, i),
+                                    self.alpha),
                               disp=0)[0] for i in range(N)])
 
-        #cumulative beta = beta_cum
+        # cumulative beta = beta_cum
         beta = _beta.mean()
-        beta_err = np.sqrt( (N-1) / N * ( (_beta - beta)**2 ).sum() )
+        beta_err = np.sqrt((N - 1) / N * ((_beta - beta)**2).sum())
 
-        #propagate errors on alpha to beta
-        beta_err = np.sqrt(beta_err**2 * (self.alpha - 1.)**2 + beta**2 * self.alpha_err**2)
+        # propagate errors on alpha to beta
+        beta_err = (np.sqrt(beta_err**2 * (self.alpha - 1.)**2 +
+                            beta**2 * self.alpha_err**2))
 
-        #set attributes
+        # set attributes
         self.beta = beta
         self.beta_err = beta_err
-        
-        return _beta * np.abs(self.alpha - 1.), self.beta, self.beta_err
-    
+
+        return _beta, self.beta, self.beta_err
+
     def plot_powerlaw(self, ax, custom_xlim=None, **kwargs):
         '''
         Plot the power law fit to the FFD. [No tests]
@@ -259,8 +296,6 @@ class FFD(object):
         -----------
         ax : matplotlibe Axes object
             plot to insert the power law in to
-        ed : array
-            array of ED or energy values in the FFD
         custom_xlim : 2-tuple
             minimum, maximum ED/energy value for power law
         kwargs : dict
@@ -272,60 +307,55 @@ class FFD(object):
         in log-log representation.
         '''
         if custom_xlim is None:
-            x = np.linspace(np.nanmin(self.ed),np.nanmax(self.ed),3)
+            x = np.linspace(np.nanmin(self.ed), np.nanmax(self.ed), 3)
         else:
             mi, ma = custom_xlim
             x = np.linspace(mi, ma, 3)
-        y = self.beta / np.abs(self.alpha - 1.) * np.power(x,-self.alpha + 1.)
-        a = ax.plot(x, y,  **kwargs)
+        y = self.beta / np.abs(self.alpha - 1.) * np.power(x, -self.alpha + 1.)
+        a = ax.plot(x, y, **kwargs)
         return a, x, y
 
-    def fit_powerlaw(self, count_ed=False, alims=[1.01,3.]):
+    def fit_powerlaw(self, alims=[1.01, 3.]):
         '''
         Calculate the un-biased ML power law estimator
         from Maschberger and Kroupa (2009), sections
-        3.1.4. and 3.1.5.
+        3.1.4. and 3.1.5. by simply minimizing the equation in
+        ML_powerlaw_estimator.
 
         Parameters:
         ------------
-        count_ed : bool
-            If True use frequency adjusted ED sample
         alims:
             parameter range for power law exponent
-            
+
         Return:
         -------
         alpha, alpha_err - float, float
             power law exponent and its jackknife uncertainty
         '''
-        #use frequency adjusted ED sample?
-        if count_ed==True:
-            ed = self.count_ed
-        elif count_ed==False:
-            ed = self.ed
-            
+        # use frequency adjusted ED sample?
+        ed = self._get_ed()
+
         # solve eq. 9 using scipy.fmin, define jacknife uncertainty
         N = len(ed)
-        _alpha = np.array([fmin(ML_powerlaw_estimator, x0=2.,
-                               args=(np.delete(ed,i),), disp=0)[0]
+        _alpha = np.array([fmin(_ML_powerlaw_estimator, x0=2.,
+                               args=(np.delete(ed, i),), disp=0)[0]
                           for i in range(N)])
-        
+
         # alpha is the mean value
         alpha = _alpha.mean()
-        
+
         # uncertainty is the standard deviation
-        sig_alpha = np.sqrt( (N-1) / N * ( (_alpha - alpha)**2 ).sum() )
-        
+        sig_alpha = np.sqrt((N - 1) / N * ((_alpha - alpha)**2).sum())
+
         self.alpha = alpha
         self.alpha_err = sig_alpha
-        
+
         return self.alpha, self.alpha_err
-    
-    def is_powerlaw_truncated(self, count_ed=False,
-                              rejection=(.15, .05), nthresh=100):
+
+    def is_powerlaw_truncated(self, rejection=(.15, .05), nthresh=100):
         '''
         Apply the exceedance test recommended by
-        Maschberger and Kroupa 2009. 
+        Maschberger and Kroupa 2009.
 
         Parameters:
         ------------
@@ -342,27 +372,28 @@ class FFD(object):
         True if power law not consistent with an un-truncated power law
         False if power law is consitent with an un-truncated power law
         '''
-        if count_ed == True:
-            ed = self.count_ed
-        elif count_ed == False:
-            ed = self.ed
-            
-        mean, std = calculate_average_number_of_exceeding_values(ed, self.alpha, 500)
+        ed = self._get_ed()
+
+        mean, std = _calculate_average_number_of_exceeding_values(ed,
+                                                                  self.alpha,
+                                                                  500)
 
         if self.alpha > 2.:
             warnings.warn('Power law exponent is steep. '
                           'Power of statistical tests decreases '
                           'according to Maschberger and Kroupa 2009.')
+            
         if len(ed) >= nthresh:
             truncation_limit = rejection[1]
+            
         else:
             truncation_limit = rejection[0]
 
         truncated = (mean / len(ed) > truncation_limit)
 
         return truncated
-    
-    def is_powerlaw(self, count_ed=False, sig_level=0.05):
+
+    def is_powerlaw(self, sig_level=0.05):
         '''
         Test if we must reject the power law hypothesis
         judging by the stabilised Kolmogorov-Smirnov
@@ -371,8 +402,6 @@ class FFD(object):
 
         Parameters:
         -----------
-        ed : array
-            energy/ED values that supposedly follow a power law
         sig_level : float < 1.
             significance level for the hypothesis test
 
@@ -381,22 +410,47 @@ class FFD(object):
         True if we cannot reject the power law hypothesis.
         False if we must reject the power law hypothesis.
         '''
-        if count_ed == True:
-            ed = self.count_ed
-        elif count_ed == False:
-            ed = self.ed
-            
-        truncated = self.is_powerlaw_truncated(count_ed=count_ed)
-        KS = stabilised_KS_statistic(ed, alpha=self.alpha, truncated=truncated)
-        limit = calculate_KS_acceptance_limit(len(self.ed), sig_level=sig_level)
+        ed = self._get_ed()
+
+        truncated = self.is_powerlaw_truncated()
+
+        KS = _stabilised_KS_statistic(ed, alpha=self.alpha,
+                                      truncated=truncated)
+
+        limit = _calculate_KS_acceptance_limit(len(self.ed),
+                                               sig_level=sig_level)
+
         ispowerlaw = KS < limit
-        if ispowerlaw == False:
+
+        if ispowerlaw is False:
+
             warnings.warn('Kolmogorov-Smirnov tells us to reject'
                            r' the power law hypothesis at p={}.'
                            ' KS={}, limit={}'.format(sig_level, KS, limit))
         return ispowerlaw
 
-def calculate_average_number_of_exceeding_values(data, alpha, n, **kwargs):
+    def _get_ed(self):
+        """Get ED array either for a single star sample
+        or a multiple stars sample, depending on `multiple_stars`
+        flag.
+
+        Return:
+        -------
+        ed - sample of flare energies 
+        """
+
+        if self.multiple_stars is True:
+            
+            ed = self.count_ed
+                
+        elif self.multiple_stars is False:
+            
+            ed = self.ed
+        
+        return ed
+    
+    
+def _calculate_average_number_of_exceeding_values(data, alpha, n, **kwargs):
     '''
     Parameters:
     -----------
@@ -417,9 +471,15 @@ def calculate_average_number_of_exceeding_values(data, alpha, n, **kwargs):
 
     assert alpha is not None
     assert data is not None
-    exceedance_statistic = [_calculate_number_of_exceeding_values(data, alpha, **kwargs) for i in range(n)]
+    
+    exceedance_statistic = [_calculate_number_of_exceeding_values(data, 
+                                                                  alpha, 
+                                                                  **kwargs) 
+                            for i in range(n)]
     exceedance_statistic = np.array(exceedance_statistic)
+    
     return np.nanmean(exceedance_statistic), np.nanstd(exceedance_statistic)
+
 
 def _calculate_number_of_exceeding_values(data, alpha, maxlim=1e8, **kwargs):
     '''
@@ -450,7 +510,7 @@ def _calculate_number_of_exceeding_values(data, alpha, maxlim=1e8, **kwargs):
     '''
     pdist = generate_random_power_law_distribution(np.min(data),
                                                    np.max(data) * maxlim,
-                                                   -alpha+1,
+                                                   -alpha + 1,
                                                    size=data.shape[0],
                                                    **kwargs)
 
@@ -459,7 +519,8 @@ def _calculate_number_of_exceeding_values(data, alpha, maxlim=1e8, **kwargs):
                          ' exceedance test could not be generated.'
                          ' Check your inputs.')
     return len(np.where(pdist > np.max(data))[0])
-    
+
+
 def _get_multistar_factors(dataframe, ID, sort):
     """Returns an array of factors to apply
     to the detected flares. Accounts for the
@@ -483,16 +544,20 @@ def _get_multistar_factors(dataframe, ID, sort):
     
     Parameters:
     -----------
-    dataframe:
-    ID:
-    sort:
+    dataframe: DataFrame
+        flare table with ID and sort columns
+    ID: str
+        column name for star ID in dataframe
+    sort: str
+        column name for energies or EDs dataframe
     
-    Return:
+    Return: 
     -------
-    
+    multistar factor array
     """
     freq = []
-    df = dataframe.copy(deep=True)# make a copy to safely sort the dataframe
+    # make a copy to safely sort the dataframe
+    df = dataframe.copy(deep=True)
     
     # check if sort exists, otherwise throw error
     try:
@@ -503,15 +568,21 @@ def _get_multistar_factors(dataframe, ID, sort):
     # loop over sorted dataframe and find the number of targets
     # that contribution to the sub-frame
     for i in range(df.shape[0]):
+        
         try:
-            f = df.iloc[:i+1] #sub-frame
-            freq.append(len(set(f[ID].values))) #append number of targets
-        except KeyError: # where are the unique target ID
-            raise KeyError("Pass the column name of target IDs to the FFD constructor: ID = ???.")
+            f = df.iloc[:i + 1]  # sub-frame
+            freq.append(len(set(f[ID].values)))  # append number of targets
+            
+        except KeyError:  # where are the unique target ID
+            
+            raise KeyError("Pass the column name of target IDs "
+                           "to the FFD constructor: ID = ???.")
+        
+    # factor for maximum energy goes first and must be 1, the rest < 1
+    return np.array(freq[::-1]) / freq[-1] 
 
-    return np.array(freq[::-1]) / freq[-1] #factor for maximum energy goes first and must be 1, the rest < 1
 
-def ML_powerlaw_estimator(alpha, ed):
+def _ML_powerlaw_estimator(alpha, ed):
     '''
     Power law maximum likelihood estimator from
     Maschberger and Kroupa (2009),
@@ -530,7 +601,7 @@ def ML_powerlaw_estimator(alpha, ed):
     To find MLE for alpha, minimize this term.
     '''
     if np.array(alpha <= 1.).any():
-        #Power law exponent must be >1.
+        # Power law exponent must be >1.
         return np.nan
         
     n = len(ed)
@@ -543,18 +614,21 @@ def ML_powerlaw_estimator(alpha, ed):
         raise ValueError('Negative value encountered in data.')
     
     # De-bias alpha following Maschberger and Kroupa 2009    
-    alpha = de_bias_alpha(n, alpha)
+    alpha = _de_bias_alpha(n, alpha)
     
     # Calculate the remaining variables in formula (9)
     Yexp = (np.power(Y, 1 - alpha))
     T = np.log(ed).sum()
-    Z = de_biased_upper_limit(ed, alpha)
+    Z = _de_biased_upper_limit(ed, alpha)
     Zexp = (np.power(Z, 1 - alpha))
 
-    return np.abs(n / (alpha - 1) + n * ((Zexp * np.log(Z) - Yexp * np.log(Y)) / (Zexp - Yexp)) - T)
+    return (np.abs(n / (alpha - 1) +
+                   n * ((Zexp * np.log(Z) - Yexp * np.log(Y)) /
+                        (Zexp - Yexp)) -
+                   T))
     
 
-def de_biased_upper_limit(data, a):
+def _de_biased_upper_limit(data, a):
     '''
     De-biases the upper limits for a
     ML power law exponent estimator.
@@ -584,13 +658,13 @@ def de_biased_upper_limit(data, a):
     if Xn == X1:
         raise ValueError('Data range is zero.')
     n = len(data)
-    G = (1. - a) * np.log(Xn / X1)#(14)
-    base = 1.+ (np.exp(G) - 1.) / n
+    G = (1. - a) * np.log(Xn / X1)  # (14)
+    base = 1. + (np.exp(G) - 1.) / n
     exponent = 1. / (1. - a)
     return Xn * np.power(base, exponent)
 
 
-def de_bias_alpha(n, alpha):
+def _de_bias_alpha(n, alpha):
     '''
     De-biases the power law value
     according to Maschberger and Kroupa (2009),
@@ -613,7 +687,7 @@ def de_bias_alpha(n, alpha):
     return (alpha - 1.) * n / (n - 2) + 1.
 
 
-def stabilised_KS_statistic(data, alpha, truncated):
+def _stabilised_KS_statistic(data, alpha, truncated):
     '''
     Calculate the stabilised KS statistic
     from Maschberger and Kroupa 2009, Eqn. (21)
@@ -632,14 +706,15 @@ def stabilised_KS_statistic(data, alpha, truncated):
     float - stablised KS statistic
     '''
     sorted_data = np.sort(data)
-    pp = calculate_cumulative_powerlaw_distribution(sorted_data, alpha, truncated)
+    pp = _calculate_cumulative_powerlaw_distribution(sorted_data,
+                                                     alpha, truncated)
     y = (np.arange(1, len(pp) + 1) - .5) / len(pp)
-    argument = (_apply_stabilising_transformation(y)
-                - _apply_stabilising_transformation(pp))
+    argument = (_apply_stabilising_transformation(y) -
+                _apply_stabilising_transformation(pp))
     return np.max(np.abs(argument))
 
 
-def calculate_cumulative_powerlaw_distribution(data, alpha, truncated):
+def _calculate_cumulative_powerlaw_distribution(data, alpha, truncated):
     '''
     Calculates the cumulative powerlaw distribution
     from the data, given the best fit power law exponent
@@ -654,29 +729,36 @@ def calculate_cumulative_powerlaw_distribution(data, alpha, truncated):
         ascending order
     alpha : float
         best-fit power law exponent
+    truncated : bool
+        True if the power law distribution is truncated
 
     Returns:
     ---------
     array : cumulative distribution
     '''
-    if alpha <=1.:
+    if alpha <= 1.:
         raise ValueError('This distribution function is only'
                          ' valid for alpha > 1., see also '
                          'Maschberger and Kroupa 2009.')
     data = np.sort(data)
+    
     def expa(x, alpha):
         return np.power(x, 1. - alpha)
-    if truncated == True:
-        CDF = ((expa(data, alpha) - expa(np.min(data), alpha))
-              / (expa(np.max(data), alpha) - expa(np.min(data), alpha)))
-    elif truncated == False:
+
+    if truncated:
+        CDF = ((expa(data, alpha) - expa(np.min(data), alpha)) /
+               (expa(np.max(data), alpha) - expa(np.min(data), alpha)))
+        
+    if ~truncated:
         CDF = 1. - expa(data / np.min(data), alpha)
-    #fix a -0. value that occurs as the first value
-    CDF[np.where(CDF==0.)[0]] = 0.
+        
+    # fix a -0. value that occurs as the first value
+    CDF[np.where(CDF == 0.)[0]] = 0.
+    
     return CDF
 
 
-def calculate_KS_acceptance_limit(n, sig_level=0.05):
+def _calculate_KS_acceptance_limit(n, sig_level=0.05):
     '''
     Above this limit we must reject the null-hypothesis.
     In our context, this is the hypothesis that the dis-
@@ -691,16 +773,21 @@ def calculate_KS_acceptance_limit(n, sig_level=0.05):
     '''
     if ((sig_level >= 1.) | (sig_level <= 0.)):
         raise ValueError('Pass a valid significance level.')
+    
     if n == 0:
         raise ValueError('No data to calculate KS_acceptance limit.')
+    
     elif ((n <= 35) & (n > 0)):
+    
         t = (pd.read_csv(f'{CWD}/static/KS_leq_35_values.csv',
                            delimiter='|', skiprows=1, header=None,
-                           names=['n',.9,.95,.99])
+                           names=['n', .9, .95, .99])
              .set_index('n')
              .astype(float))
         return t.loc[n, 1 - sig_level]
+    
     elif n > 35:
+        
         return np.sqrt(-.5 * np.log((sig_level) / 2.)) / np.sqrt(n)
 
     
@@ -724,10 +811,11 @@ def _apply_stabilising_transformation(u):
     '''
     u = np.array(u)
     if (u < 0).any():
-        raise ValueError("CDF values must be positive.")#validate input for sqrt
+        # validate input for sqrt
+        raise ValueError("CDF values must be positive.")
     u = .5 + .5 * u
     S0 = 2. / np.pi * np.arcsin(np.sqrt(u))
-    return 2. * S0  -1.
+    return 2. * S0 - 1.
 
 
 def _get_frequency_corrected_ed_sample(ed, counts):
@@ -748,8 +836,10 @@ def _get_frequency_corrected_ed_sample(ed, counts):
     for underlying count frequencies using duplicates
     """
     eds = []
+    
     for e, n in zip(ed, counts):
-        eds.append(int(np.rint(n))*[e])
+        eds.append(int(np.rint(n)) * [e])
+        
     return np.array([i for E in eds for i in E])
 
 
@@ -761,4 +851,4 @@ def generate_random_power_law_distribution(a, b, g, size=1, seed=None):
         np.random.seed(seed)
     r = np.random.random(size=size)
     ag, bg = a**g, b**g
-    return (ag + (bg - ag)*r)**(1./g)
+    return (ag + (bg - ag) * r)**(1. / g)
